@@ -95,7 +95,7 @@ exten => 123,n,Hangup()
 
 FastAGI runs as a server process and handles AGI commands over TCP. Run a FastAGI server and configure Asterisk to call it.
 
-Example FastAGI server:
+Example FastAGI dispatcher:
 
 ```php
 <?php
@@ -104,19 +104,16 @@ declare(strict_types=1);
 
 require 'vendor/autoload.php';
 
-use Fperdomo\PhpAgi\FastAGI;
+use Fperdomo\PhpAgi\FastAgiDispatcher;
 
-$host = getenv('FASTAGI_HOST') ?: '0.0.0.0';
-$port = (int) (getenv('FASTAGI_PORT') ?: 4573);
+// Handler scripts live here
+$dispatcher = new FastAgiDispatcher(
+    baseDir: __DIR__ . '/handlers',
+    dropPrivileges: true,
+    logVerboseDump: false,
+);
 
-try {
-    $server = new FastAGI($host, $port);
-    echo "FastAGI server listening on {$host}:{$port}\n";
-    $server->listen();
-} catch (\Throwable $e) {
-    error_log('FastAGI Error: ' . $e->getMessage());
-    exit(1);
-}
+$dispatcher->handle();
 ```
 
 Configure Asterisk to use FastAGI in `extensions.conf`:
@@ -184,9 +181,9 @@ A suggested layout for this project:
 
 ```
 src/
-  AGI.php               # Main AGI class
-  FastAGI.php           # FastAGI server class
-  Manager.php           # Asterisk Manager (AMI) support
+  Agi.php               # Main AGI class
+  FastAgiDispatcher.php # FastAGI dispatcher
+  AgiAsteriskManager.php# Asterisk Manager (AMI) support
 composer.json
 README.md
 ```
