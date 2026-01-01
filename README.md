@@ -37,23 +37,6 @@ Install the package via Composer (replace with your vendor if you publish under 
 composer require fperdomo/php-agi
 ```
 
-Recommended PSR-4 autoload configuration in `composer.json`:
-
-```
-{
-  "autoload": {
-    "psr-4": {
-      "Fperdomo\\PhpAgi\\": "src/"
-    }
-  }
-}
-```
-
-After editing `composer.json` run:
-
-```
-composer dump-autoload
-```
 
 ## Usage
 
