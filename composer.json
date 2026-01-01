@@ -1,0 +1,56 @@
+{
+  "name": "fperdomo/php-agi",
+  "description": "PHPAGI is lib for the Asterisk Gateway Interface.",
+  "keywords": ["phpagi", "asterisk", "agi", "voip"],
+  "homepage": "https://fperdomo.dev",
+  "license": "MIT",
+  "version": "1.0.0",
+  "authors": [
+    {
+      "name": "Fermin Perdomo",
+      "homepage": "https://fperdomo.dev",
+      "role": "Developer"
+    }
+  ],
+  "support": {
+    "email": "masterfermin02@gmail.com"
+  },
+  "require": {
+    "php" : ">=8.3",
+    "ext-sockets": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Fperdomo\\PhpAgi\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "lint": "pint",
+    "refactor": "./vendor/bin/rector",
+    "test:lint": "pint --test",
+    "test:unit": "pest --parallel",
+    "test:refactor": "rector --dry-run",
+    "test": [
+      "@test:unit",
+      "@test:lint",
+      "@test:refactor"
+    ]
+  },
+  "require-dev": {
+    "pestphp/pest": "^4.1",
+    "rector/rector": "^2.3",
+    "laravel/pint": "^1.26"
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}

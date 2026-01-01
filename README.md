@@ -48,72 +48,134 @@ AGI scripts are executed by Asterisk from the dialplan. Place executable PHP scr
 
 Example: simple AGI script
 
-```
-#!/usr/bin/php -q
+```php
+#!/usr/bin/env php
 <?php
+
+declare(strict_types=1);
+
 require 'vendor/autoload.php';
 
-use Fperdomo\PhpAgi\AGI;
+use Fperdomo\PhpAgi\Agi;
 
-$agi = new AGI();
+try {
+    $agi = new Agi();
+    
+    // Answer the call
+    $agi->answer();
+    
+    // Speak text using text-to-speech
+    $agi->text2wav("Hello from PHPAGI!");
+    
+    // Hangup the call
+    $agi->hangup();
+    
+    exit(0);
+} catch (\Throwable $e) {
+    // Log errors to stderr for debugging
+    error_log('AGI Error: ' . $e->getMessage());
+    exit(1);
+}
+```
 
-// Answer call
-$agi->answer();
+Make the script executable:
 
-// Speak text and hangup
-$agi->text2wav("Hello from AGI!");
-$agi->hangup();
+```bash
+chmod +x your-script.php
 ```
 
 In `extensions.conf`:
 
-```
-exten=>123,1,AGI(your-script.php)
-exten=>123,n,Hangup()
+```ini
+exten => 123,1,AGI(your-script.php)
+exten => 123,n,Hangup()
 ```
 
 ### FastAGI
 
 FastAGI runs as a server process and handles AGI commands over TCP. Run a FastAGI server and configure Asterisk to call it.
 
-Example FastAGI server (simplified):
+Example FastAGI server:
 
-```
+```php
 <?php
+
+declare(strict_types=1);
+
 require 'vendor/autoload.php';
 
 use Fperdomo\PhpAgi\FastAGI;
 
-$server = new FastAGI('0.0.0.0', 4573);
-$server->listen();
+$host = getenv('FASTAGI_HOST') ?: '0.0.0.0';
+$port = (int) (getenv('FASTAGI_PORT') ?: 4573);
+
+try {
+    $server = new FastAGI($host, $port);
+    echo "FastAGI server listening on {$host}:{$port}\n";
+    $server->listen();
+} catch (\Throwable $e) {
+    error_log('FastAGI Error: ' . $e->getMessage());
+    exit(1);
+}
 ```
 
 Configure Asterisk to use FastAGI in `extensions.conf`:
 
-```
-exten=>123,1,FastAGI(agi://your.server.ip/your-script)
+```ini
+exten => 123,1,FastAGI(agi://your.server.ip:4573/your-script)
 ```
 
 ### Asterisk Manager (AMI)
 
-Use the Manager class to connect to Asterisk's management interface to receive events or take actions programmatically.
+Use the AgiAsteriskManager class to connect to Asterisk's management interface to receive events or take actions programmatically.
 
 Example:
 
-```
+```php
 <?php
+
+declare(strict_types=1);
+
 require 'vendor/autoload.php';
 
-use Fperdomo\PhpAgi\Manager;
+use Fperdomo\PhpAgi\AgiAsteriskManager;
 
-$manager = new Manager([
-    'host'     => '127.0.0.1',
-    'username' => 'admin',
-    'secret'   => 'amp111',
-]);
+// Configuration from environment variables or defaults
+$config = [
+    'server'   => getenv('AMI_HOST') ?: '127.0.0.1',
+    'port'     => (int) (getenv('AMI_PORT') ?: 5038),
+    'username' => getenv('AMI_USER') ?: 'admin',
+    'secret'   => getenv('AMI_SECRET') ?: 'amp111',
+];
 
-$manager->connect();
-// $manager->originate(...);
+try {
+    $manager = new AgiAsteriskManager(null, $config);
+    
+    // Connect to Asterisk Manager
+    if ($manager->connect()) {
+        echo "Connected to Asterisk Manager Interface\n";
+        
+        // Perform actions (e.g., originate call, query status, etc.)
+        // $response = $manager->send_request('Action', ['Action' => 'Ping']);
+        
+        // Remember to disconnect when done
+        // $manager->disconnect();
+    }
+} catch (\Throwable $e) {
+    error_log('AMI Error: ' . $e->getMessage());
+    exit(1);
+}
+```
+
+**Environment Variables:**
+
+For security, use environment variables for sensitive configuration:
+
+```bash
+export AMI_HOST="127.0.0.1"
+export AMI_PORT="5038"
+export AMI_USER="admin"
+export AMI_SECRET="your-secret-password"
 ```
 
 ## Directory layout
@@ -125,11 +187,6 @@ src/
   AGI.php               # Main AGI class
   FastAGI.php           # FastAGI server class
   Manager.php           # Asterisk Manager (AMI) support
-docs/
-  README.agi.md         # AGI usage and notes
-  README.fastagi.md     # FastAGI details
-  README.amanager.md    # AMI usage guide
-examples/               # Script examples
 composer.json
 README.md
 ```
