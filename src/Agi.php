@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Fperdomo\PhpAgi;
 
-use Fperdomo\PhpAgi\facade\AgiError;
+use Fperdomo\PhpAgi\Config\ConfigRepository;
+use Fperdomo\PhpAgi\Facade\AgiError;
 
 /**
  * AGI class
@@ -46,41 +47,12 @@ class Agi
         ?string $config = null,
         array $optconfig = []
     ) {
-        // load config
-        if (! is_null($config) && file_exists($config)) {
-            $this->config = parse_ini_file($config, true);
-        } elseif (file_exists(Constants::DEFAULT_PHPAGI_CONFIG)) {
-            $this->config = parse_ini_file(Constants::DEFAULT_PHPAGI_CONFIG, true);
-        }
-
-        // If optconfig is specified, stuff vals and vars into 'phpagi' config array.
-        foreach ($optconfig as $var => $val) {
-            $this->config['phpagi'][$var] = $val;
-        }
-
-        // add default values to config for uninitialized values
-        if (! isset($this->config['phpagi']['error_handler'])) {
-            $this->config['phpagi']['error_handler'] = true;
-        }
-        if (! isset($this->config['phpagi']['debug'])) {
-            $this->config['phpagi']['debug'] = false;
-        }
-        if (! isset($this->config['phpagi']['admin'])) {
-            $this->config['phpagi']['admin'] = null;
-        }
-        if (! isset($this->config['phpagi']['tempdir'])) {
-            $this->config['phpagi']['tempdir'] = Constants::AST_TMP_DIR;
-        }
-
-        // festival TTS config
-        if (! isset($this->config['festival']['text2wave'])) {
-            $this->config['festival']['text2wave'] = $this->which('text2wave');
-        }
-
-        // swift TTS config
-        if (! isset($this->config['cepstral']['swift'])) {
-            $this->config['cepstral']['swift'] = $this->which('swift');
-        }
+        // load + normalize config (backward-compatible array shape)
+        $configRepository = new ConfigRepository($config);
+        $this->config = $configRepository->buildAgiConfig(
+            overrides: $optconfig,
+            which: $this->which(...),
+        );
 
         ob_implicit_flush(true);
 
@@ -89,10 +61,10 @@ class Agi
         $this->out = defined('STDOUT') ? STDOUT : fopen('php://stdout', 'w');
 
         // initialize error handler
-        if ($this->config['phpagi']['error_handler'] == true) {
+        if (($this->config['phpagi']['error_handler'] ?? true) == true) {
             set_error_handler(AgiError::handler(...));
             global $phpagi_error_handler_email;
-            $phpagi_error_handler_email = $this->config['phpagi']['admin'];
+            $phpagi_error_handler_email = $this->config['phpagi']['admin'] ?? null;
             error_reporting(E_ALL);
         }
 
@@ -153,15 +125,14 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-channel+status
      *
-     * @param  string  $channel
      * @return array, see evaluate for return information. ['data'] contains description.
      * @return mixed[]
      */
-    public function channel_status($channel = ''): array
+    public function channel_status(string $channel = ''): array
     {
-        $ret = $this->evaluate("CHANNEL STATUS $channel");
+        $ret = $this->evaluate('CHANNEL STATUS '.$channel);
         $ret['data'] = match ($ret['result']) {
-            -1 => trim("There is no channel that matches $channel"),
+            -1 => trim('There is no channel that matches '.$channel),
             Constants::AST_STATE_DOWN => 'Channel is down and available',
             Constants::AST_STATE_RESERVED => 'Channel is down, but reserved',
             Constants::AST_STATE_OFFHOOK => 'Channel is off hook',
@@ -172,7 +143,7 @@ class Agi
             Constants::AST_STATE_BUSY => 'Line is busy',
             Constants::AST_STATE_DIALING_OFFHOOK => 'Digits (or equivalent) have been dialed while offhook',
             Constants::AST_STATE_PRERING => 'Channel has detected an incoming call and is waiting for ring',
-            default => "Unknown ({$ret['result']})",
+            default => sprintf('Unknown (%s)', $ret['result']),
         };
 
         return $ret;
@@ -183,13 +154,12 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-database+del
      *
-     * @param  string  $family
      * @param  string  $key
      * @return array, see evaluate for return information. ['result'] is 1 on sucess, 0 otherwise.
      */
-    public function database_del($family, $key): array
+    public function database_del(string $family, $key): array
     {
-        return $this->evaluate("DATABASE DEL \"$family\" \"$key\"");
+        return $this->evaluate(sprintf('DATABASE DEL "%s" "%s"', $family, $key));
     }
 
     /**
@@ -203,9 +173,9 @@ class Agi
      */
     public function database_deltree($family, $keytree = ''): array
     {
-        $cmd = "DATABASE DELTREE \"$family\"";
+        $cmd = sprintf('DATABASE DELTREE "%s"', $family);
         if ($keytree != '') {
-            $cmd .= " \"$keytree\"";
+            $cmd .= sprintf(' "%s"', $keytree);
         }
 
         return $this->evaluate($cmd);
@@ -216,28 +186,26 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-database+get
      *
-     * @param  string  $family
      * @param  string  $key
      * @return array, see evaluate for return information. ['result'] is 1 on sucess, 0 failure. ['data'] holds the value
      */
-    public function database_get($family, $key): array
+    public function database_get(string $family, $key): array
     {
-        return $this->evaluate("DATABASE GET \"$family\" \"$key\"");
+        return $this->evaluate(sprintf('DATABASE GET "%s" "%s"', $family, $key));
     }
 
     /**
      * Adds or updates an entry in the Asterisk database for a given family, key, and value.
      *
-     * @param  string  $family
      * @param  string  $key
      * @param  string  $value
      * @return array, see evaluate for return information. ['result'] is 1 on sucess, 0 otherwise
      */
-    public function database_put($family, $key, $value): array
+    public function database_put(string $family, $key, $value): array
     {
         $value = str_replace("\n", '\n', addslashes($value));
 
-        return $this->evaluate("DATABASE PUT \"$family\" \"$key\" \"$value\"");
+        return $this->evaluate(sprintf('DATABASE PUT "%s" "%s" "%s"', $family, $key, $value));
     }
 
     /**
@@ -252,10 +220,10 @@ class Agi
     public function set_global_var($pVariable, $pValue): array
     {
         if (is_numeric($pValue)) {
-            return $this->evaluate("Set({$pVariable}={$pValue},g);");
+            return $this->evaluate(sprintf('Set(%s=%s,g);', $pVariable, $pValue));
         }
 
-        return $this->evaluate("Set({$pVariable}=\"{$pValue}\",g);");
+        return $this->evaluate(sprintf('Set(%s="%s",g);', $pVariable, $pValue));
     }
 
     /**
@@ -270,10 +238,10 @@ class Agi
     public function set_var($pVariable, $pValue): array
     {
         if (is_numeric($pValue)) {
-            return $this->evaluate("Set({$pVariable}={$pValue});");
+            return $this->evaluate(sprintf('Set(%s=%s);', $pVariable, $pValue));
         }
 
-        return $this->evaluate("Set({$pVariable}=\"{$pValue}\");");
+        return $this->evaluate(sprintf('Set(%s="%s");', $pVariable, $pValue));
     }
 
     /**
@@ -282,17 +250,16 @@ class Agi
      * @link http://www.voip-info.org/wiki-exec
      * @link http://www.voip-info.org/wiki-Asterisk+-+documentation+of+application+commands
      *
-     * @param  string  $application
      * @param  mixed  $options
      * @return array, see evaluate for return information. ['result'] is whatever the application returns, or -2 on failure to find application
      */
-    public function exec($application, $options): array
+    public function exec(string $application, $options): array
     {
         if (is_array($options)) {
             $options = implode('|', $options);
         }
 
-        return $this->evaluate("EXEC $application $options");
+        return $this->evaluate(sprintf('EXEC %s %s', $application, $options));
     }
 
     /**
@@ -333,9 +300,9 @@ class Agi
      *
      * This differs from other commands with return DTMF as numbers representing ASCII characters.
      */
-    public function get_data($filename, $timeout = null, $max_digits = null): array
+    public function get_data(string $filename, $timeout = null, $max_digits = null): array
     {
-        return $this->evaluate(rtrim("GET DATA $filename $timeout $max_digits"));
+        return $this->evaluate(rtrim(sprintf('GET DATA %s %s %s', $filename, $timeout, $max_digits)));
     }
 
     /**
@@ -350,9 +317,9 @@ class Agi
      * @param  bool  $getvalue  return the value only
      * @return int[], see evaluate for return information. ['result'] is 0 if variable hasn't been set, 1 if it has. ['data'] holds the value. returns value if $getvalue is TRUE
      */
-    public function get_variable($variable, $getvalue = false): array|int
+    public function get_variable(string $variable, $getvalue = false): array|int
     {
-        $res = $this->evaluate("GET VARIABLE $variable");
+        $res = $this->evaluate('GET VARIABLE '.$variable);
 
         if ($getvalue == false) {
             return $res;
@@ -399,12 +366,11 @@ class Agi
      * @example examples/input.php Get text input from the user and say it back
      * @example examples/ping.php Ping an IP address
      *
-     * @param  string  $channel
      * @return array, see evaluate for return information. ['result'] is 1 on success, -1 on failure.
      */
-    public function hangup($channel = ''): array
+    public function hangup(string $channel = ''): array
     {
-        return $this->evaluate("HANGUP $channel");
+        return $this->evaluate('HANGUP '.$channel);
     }
 
     /**
@@ -414,9 +380,9 @@ class Agi
      *
      * @return array, see evaluate for return information.
      */
-    public function noop($string = ''): array
+    public function noop(string $string = ''): array
     {
-        return $this->evaluate("NOOP \"$string\"");
+        return $this->evaluate(sprintf('NOOP "%s"', $string));
     }
 
     /**
@@ -431,7 +397,7 @@ class Agi
      */
     public function receive_char($timeout = -1): array
     {
-        return $this->evaluate("RECEIVE CHAR $timeout");
+        return $this->evaluate('RECEIVE CHAR '.$timeout);
     }
 
     /**
@@ -451,14 +417,15 @@ class Agi
      * @return array, see evaluate for return information. ['result'] is -1 on error, 0 on hangup, otherwise a decimal value of the
      * DTMF tone. Use chr() to convert to ASCII.
      */
-    public function record_file($file, $format, $escape_digits = '', $timeout = -1, $offset = null, $beep = false, $silence = null): array
+    public function record_file(string $file, $format, $escape_digits = '', $timeout = -1, $offset = null, $beep = false, $silence = null): array
     {
-        $cmd = trim("RECORD FILE $file $format \"$escape_digits\" $timeout $offset");
+        $cmd = trim(sprintf('RECORD FILE %s %s "%s" %d %s', $file, $format, $escape_digits, $timeout, $offset));
         if ($beep) {
             $cmd .= ' BEEP';
         }
+
         if (! is_null($silence)) {
-            $cmd .= " s=$silence";
+            $cmd .= ' s='.$silence;
         }
 
         return $this->evaluate($cmd);
@@ -469,14 +436,13 @@ class Agi
      *
      * @link https://www.voip-info.org/say-alpha
      *
-     * @param  string  $text
      * @param  string  $escape_digits
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or error, 0 if playback completes with no
      * digit received, otherwise a decimal value of the DTMF tone.  Use chr() to convert to ASCII.
      */
-    public function say_alpha($text, $escape_digits = ''): array
+    public function say_alpha(string $text, $escape_digits = ''): array
     {
-        return $this->evaluate("SAY ALPHA $text \"$escape_digits\"");
+        return $this->evaluate(sprintf('SAY ALPHA %s "%s"', $text, $escape_digits));
     }
 
     /**
@@ -491,7 +457,7 @@ class Agi
      */
     public function say_digits($digits, $escape_digits = ''): array
     {
-        return $this->evaluate("SAY DIGITS $digits \"$escape_digits\"");
+        return $this->evaluate(sprintf('SAY DIGITS %d "%s"', $digits, $escape_digits));
     }
 
     /**
@@ -506,7 +472,7 @@ class Agi
      */
     public function say_number($number, $escape_digits = ''): array
     {
-        return $this->evaluate("SAY NUMBER $number \"$escape_digits\"");
+        return $this->evaluate(sprintf('SAY NUMBER %d "%s"', $number, $escape_digits));
     }
 
     /**
@@ -514,14 +480,13 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-say+phonetic
      *
-     * @param  string  $text
      * @param  string  $escape_digits
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or error, 0 if playback completes with no
      * digit received, otherwise a decimal value of the DTMF tone.  Use chr() to convert to ASCII.
      */
-    public function say_phonetic($text, $escape_digits = ''): array
+    public function say_phonetic(string $text, $escape_digits = ''): array
     {
-        return $this->evaluate("SAY PHONETIC $text \"$escape_digits\"");
+        return $this->evaluate(sprintf('SAY PHONETIC %s "%s"', $text, $escape_digits));
     }
 
     /**
@@ -540,7 +505,7 @@ class Agi
             $time = time();
         }
 
-        return $this->evaluate("SAY TIME $time \"$escape_digits\"");
+        return $this->evaluate(sprintf('SAY TIME %d "%s"', $time, $escape_digits));
     }
 
     /**
@@ -554,9 +519,9 @@ class Agi
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or error, 0 if the image is sent or
      * channel does not support image transmission.
      */
-    public function send_image($image): array
+    public function send_image(string $image): array
     {
-        return $this->evaluate("SEND IMAGE $image");
+        return $this->evaluate('SEND IMAGE '.$image);
     }
 
     /**
@@ -569,9 +534,9 @@ class Agi
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or error, 0 if the text is sent or
      * channel does not support text transmission.
      */
-    public function send_text($text): array
+    public function send_text(string $text): array
     {
-        return $this->evaluate("SEND TEXT \"$text\"");
+        return $this->evaluate(sprintf('SEND TEXT "%s"', $text));
     }
 
     /**
@@ -587,7 +552,7 @@ class Agi
      */
     public function set_autohangup($time = 0): array
     {
-        return $this->evaluate("SET AUTOHANGUP $time");
+        return $this->evaluate('SET AUTOHANGUP '.$time);
     }
 
     /**
@@ -603,9 +568,9 @@ class Agi
      *                       number will be considered to be part of the name.
      * @return array, see evaluate for return information.
      */
-    public function set_callerid($cid): array
+    public function set_callerid(string $cid): array
     {
-        return $this->evaluate("SET CALLERID $cid");
+        return $this->evaluate('SET CALLERID '.$cid);
     }
 
     /**
@@ -619,12 +584,11 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-set+context
      *
-     * @param  string  $context
      * @return array, see evaluate for return information.
      */
-    public function set_context($context): array
+    public function set_context(string $context): array
     {
-        return $this->evaluate("SET CONTEXT $context");
+        return $this->evaluate('SET CONTEXT '.$context);
     }
 
     /**
@@ -638,12 +602,11 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-set+extension
      *
-     * @param  string  $extension
      * @return array, see evaluate for return information.
      */
-    public function set_extension($extension): array
+    public function set_extension(string $extension): array
     {
-        return $this->evaluate("SET EXTENSION $extension");
+        return $this->evaluate('SET EXTENSION '.$extension);
     }
 
     /**
@@ -659,7 +622,7 @@ class Agi
     {
         $enabled = ($enabled) ? 'ON' : 'OFF';
 
-        return $this->evaluate("SET MUSIC $enabled $class");
+        return $this->evaluate(sprintf('SET MUSIC %s %s', $enabled, $class));
     }
 
     /**
@@ -675,7 +638,7 @@ class Agi
      */
     public function set_priority($priority): array
     {
-        return $this->evaluate("SET PRIORITY $priority");
+        return $this->evaluate('SET PRIORITY '.$priority);
     }
 
     /**
@@ -692,11 +655,11 @@ class Agi
      * @param  string  $value
      * @return array, see evaluate for return information.
      */
-    public function set_variable($variable, $value): array
+    public function set_variable(string $variable, $value): array
     {
         $value = str_replace("\n", '\n', addslashes($value));
 
-        return $this->evaluate("SET VARIABLE $variable \"$value\"");
+        return $this->evaluate(sprintf('SET VARIABLE %s "%s"', $variable, $value));
     }
 
     /**
@@ -714,9 +677,9 @@ class Agi
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or error, 0 if playback completes with no
      * digit received, otherwise a decimal value of the DTMF tone.  Use chr() to convert to ASCII.
      */
-    public function stream_file($filename, $escape_digits = '', $offset = 0): array
+    public function stream_file(string $filename, $escape_digits = '', $offset = 0): array
     {
-        return $this->evaluate("STREAM FILE $filename \"$escape_digits\" $offset");
+        return $this->evaluate(sprintf('STREAM FILE %s "%s" %d', $filename, $escape_digits, $offset));
     }
 
     /**
@@ -727,9 +690,9 @@ class Agi
      * @param  string  $setting  can be on, off or mate
      * @return array, see evaluate for return information. ['result'] is 1 on sucess, 0 if the channel is not TDD capable.
      */
-    public function tdd_mode($setting): array
+    public function tdd_mode(string $setting): array
     {
-        return $this->evaluate("TDD MODE $setting");
+        return $this->evaluate('TDD MODE '.$setting);
     }
 
     /**
@@ -752,7 +715,7 @@ class Agi
     {
         foreach (explode("\n", str_replace("\r\n", "\n", print_r($message, true))) as $msg) {
             @syslog(LOG_WARNING, $msg);
-            $ret = $this->evaluate("VERBOSE \"$msg\" $level");
+            $ret = $this->evaluate(sprintf('VERBOSE "%s" %d', $msg, $level));
         }
 
         return $ret;
@@ -769,7 +732,7 @@ class Agi
      */
     public function wait_for_digit($timeout = -1): array
     {
-        return $this->evaluate("WAIT FOR DIGIT $timeout");
+        return $this->evaluate('WAIT FOR DIGIT '.$timeout);
     }
 
     // *********************************************************************************************************
@@ -798,13 +761,12 @@ class Agi
     /**
      * Executes an AGI compliant application.
      *
-     * @param  string  $command
      * @param  string  $args
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or if application requested hangup, or 0 on non-hangup exit.
      */
-    public function exec_agi($command, $args): array
+    public function exec_agi(string $command, $args): array
     {
-        return $this->exec("AGI $command", $args);
+        return $this->exec('AGI '.$command, $args);
     }
 
     /**
@@ -841,16 +803,15 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-Asterisk+cmd+Dial
      *
-     * @param  string  $type
      * @param  string  $identifier
      * @param  int  $timeout
      * @param  string  $options
      * @param  string  $url
      * @return array, see evaluate for return information.
      */
-    public function exec_dial($type, $identifier, $timeout = null, $options = null, $url = null): array
+    public function exec_dial(string $type, $identifier, $timeout = null, $options = null, $url = null): array
     {
-        return $this->exec('Dial', trim("$type/$identifier".$this->option_delim.$timeout.$this->option_delim.$options.$this->option_delim.$url, $this->option_delim));
+        return $this->exec('Dial', trim(sprintf('%s/%s', $type, $identifier).$this->option_delim.$timeout.$this->option_delim.$options.$this->option_delim.$url, $this->option_delim));
     }
 
     /**
@@ -887,6 +848,7 @@ class Agi
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->say_digits($digits, $escape_digits);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -915,6 +877,7 @@ class Agi
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->say_number($number, $escape_digits);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -933,16 +896,16 @@ class Agi
      *
      * @link http://www.voip-info.org/wiki-say+phonetic
      *
-     * @param  string  $text
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or error, 0 if playback completes with no
      * digit received, otherwise a decimal value of the DTMF tone.  Use chr() to convert to ASCII.
      */
-    public function fastpass_say_phonetic(string &$buffer, $text, ?string $escape_digits = ''): array
+    public function fastpass_say_phonetic(string &$buffer, string $text, ?string $escape_digits = ''): array
     {
         $proceed = false;
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->say_phonetic($text, $escape_digits);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -971,6 +934,7 @@ class Agi
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->say_time($time, $escape_digits);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -996,12 +960,13 @@ class Agi
      * @return array, see evaluate for return information. ['result'] is -1 on hangup or error, 0 if playback completes with no
      * digit received, otherwise a decimal value of the DTMF tone.  Use chr() to convert to ASCII.
      */
-    public function fastpass_stream_file(string &$buffer, $filename, ?string $escape_digits = '', $offset = 0): array
+    public function fastpass_stream_file(string &$buffer, string $filename, ?string $escape_digits = '', $offset = 0): array
     {
         $proceed = false;
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->stream_file($filename, $escape_digits, $offset);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -1030,6 +995,7 @@ class Agi
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->text2wav($text, $escape_digits, $frequency);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -1058,6 +1024,7 @@ class Agi
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->swift($text, $escape_digits, $frequency, $voice);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -1084,6 +1051,7 @@ class Agi
         if ($escape_digits != '' && $buffer !== '' && ! strpos(chr(255).$escape_digits, $buffer[strlen($buffer) - 1])) {
             $proceed = true;
         }
+
         if ($buffer === '' || $proceed) {
             $res = $this->say_punctuation($text, $escape_digits, $frequency);
             if ($res['code'] == Constants::AGIRES_OK && $res['result'] > 0) {
@@ -1133,7 +1101,7 @@ class Agi
      *
      * This differs from other commands with return DTMF as numbers representing ASCII characters.
      */
-    public function fastpass_get_data(string &$buffer, $filename, $timeout = null, $max_digits = null): array
+    public function fastpass_get_data(string &$buffer, string $filename, $timeout = null, $max_digits = null): array
     {
         if (is_null($max_digits) || strlen($buffer) < $max_digits) {
             if ($buffer === '') {
@@ -1144,14 +1112,17 @@ class Agi
 
                 return $res;
             }
+
             while (is_null($max_digits) || strlen($buffer) < $max_digits) {
                 $res = $this->wait_for_digit();
                 if ($res['code'] != Constants::AGIRES_OK) {
                     return $res;
                 }
+
                 if ($res['result'] == ord('#')) {
                     break;
                 }
+
                 $buffer .= chr($res['result']);
             }
         }
@@ -1209,11 +1180,9 @@ class Agi
     /**
      * setContext - Set context, extension and priority.
      *
-     * @param  string  $context
-     * @param  string  $extension
      * @param  string  $priority
      */
-    public function setContext($context, $extension = 's', $priority = 1): void
+    public function setContext(string $context, string $extension = 's', $priority = 1): void
     {
         $this->set_context($context);
         $this->set_extension($extension);
@@ -1295,18 +1264,18 @@ class Agi
         $fname .= 'text2wav_'.$hash;
 
         // create wave file
-        if (! file_exists("$fname.wav")) {
+        if (! file_exists($fname.'.wav')) {
             // write text file
-            if (! file_exists("$fname.txt")) {
-                $fp = fopen("$fname.txt", 'w');
+            if (! file_exists($fname.'.txt')) {
+                $fp = fopen($fname.'.txt', 'w');
                 fwrite($fp, $text);
                 fclose($fp);
             }
 
-            shell_exec("{$this->config['festival']['text2wave']} -F $frequency -o $fname.wav $fname.txt");
+            shell_exec(sprintf('%s -F %d -o %s.wav %s.txt', $this->config['festival']['text2wave'], $frequency, $fname, $fname));
         } else {
-            touch("$fname.txt");
-            touch("$fname.wav");
+            touch($fname.'.txt');
+            touch($fname.'.wav');
         }
 
         // stream it
@@ -1346,15 +1315,15 @@ class Agi
         $fname .= 'swift_'.$hash;
 
         // create wave file
-        if (! file_exists("$fname.wav")) {
+        if (! file_exists($fname.'.wav')) {
             // write text file
-            if (! file_exists("$fname.txt")) {
-                $fp = fopen("$fname.txt", 'w');
+            if (! file_exists($fname.'.txt')) {
+                $fp = fopen($fname.'.txt', 'w');
                 fwrite($fp, $text);
                 fclose($fp);
             }
 
-            shell_exec("{$this->config['cepstral']['swift']} -p audio/channels=1,audio/sampling-rate=$frequency $voice -o $fname.wav -f $fname.txt");
+            shell_exec(sprintf('%s -p audio/channels=1,audio/sampling-rate=%d %s -o %s.wav -f %s.txt', $this->config['cepstral']['swift'], $frequency, $voice, $fname, $fname));
         }
 
         // stream it
@@ -1430,9 +1399,11 @@ class Agi
                             $text = implode(' ', $text);
                             break; // backspace a word
                     }
+
                     $code = substr($code, 1);
                     $command = false;
                 }
+
                 if ($code === '') {
                     $command = true;
                 } elseif ($mode == 'NUMERIC') {
@@ -1445,6 +1416,7 @@ class Agi
                     $text .= $symbol['k'.$code];
                 }
             }
+
             $this->say_punctuation($text);
         } while (str_ends_with((string) $result['result'], '**'));
 
@@ -1568,6 +1540,7 @@ class Agi
         if (! @fwrite($this->out, trim($command)."\n")) {
             return $broken;
         }
+
         fflush($this->out);
 
         // Read result.  Occasionally, a command return a string followed by an extra new line.
@@ -1598,6 +1571,7 @@ class Agi
                 $line = fgets($this->in, 4096);
                 $count = (trim($line) === '') ? $count + 1 : 0;
             }
+
             if ($count >= 5) {
                 //            $this->conlog("evaluate error on multiline read for $command");
                 return $broken;
@@ -1622,6 +1596,7 @@ class Agi
                     if ($token[strlen($token) - 1] != ')') {
                         $in_token = true;
                     }
+
                     $ret['data'] .= ' '.trim($token, '() ');
                 } elseif (strpos($token, '=')) {
                     $token = explode('=', $token);
@@ -1630,12 +1605,13 @@ class Agi
                     $ret['data'] .= ' '.$token;
                 }
             }
+
             $ret['data'] = trim((string) $ret['data']);
         }
 
         // log some errors
         if ($ret['result'] < 0) {
-            $this->conlog("$command returned {$ret['result']}");
+            $this->conlog(sprintf('%s returned %s', $command, $ret['result']));
         }
 
         return $ret;
@@ -1681,8 +1657,8 @@ class Agi
         }
 
         foreach (explode(':', $chpath) as $path) {
-            if (is_executable("$path/$cmd")) {
-                return "$path/$cmd";
+            if (is_executable(sprintf('%s/%s', $path, $cmd))) {
+                return sprintf('%s/%s', $path, $cmd);
             }
         }
 
@@ -1705,6 +1681,7 @@ class Agi
             if ($f[$i] != '' && ! file_exists($base) && mkdir($base, $perms) === false) {
                 return false;
             }
+
             $base .= DIRECTORY_SEPARATOR;
         }
 
@@ -1741,8 +1718,8 @@ function phpagi_error_handler(int $level, string $message, string $file, int $li
 
         // build message
         $basefile = basename($file);
-        $subject = "$basefile/$line/$levelName: $message";
-        $messageBody = "$levelName: $message in $file on line $line\n\n";
+        $subject = sprintf('%s/%d/%s: %s', $basefile, $line, $levelName, $message);
+        $messageBody = "{$levelName}: {$message} in {$file} on line {$line}\n\n";
 
         // legacy mysql_* functions removed in modern PHP; prefer mysqli if available
         if (strpos(' '.strtolower($messageBody), 'mysql') && function_exists('mysqli_errno')) {
@@ -1758,7 +1735,7 @@ function phpagi_error_handler(int $level, string $message, string $file, int $li
             @socket_connect($socket, '64.0.0.0', $port);
             @socket_getsockname($socket, $addr, $port);
             @socket_close($socket);
-            $messageBody .= "\n\nIP Address: $addr\n";
+            $messageBody .= "\n\nIP Address: {$addr}\n";
         }
 
         // include variables
@@ -1768,10 +1745,10 @@ function phpagi_error_handler(int $level, string $message, string $file, int $li
 
         // include code fragment
         if (file_exists($file)) {
-            $messageBody .= "\n\n$file:\n";
+            $messageBody .= "\n\n{$file}:\n";
             $code = @file($file);
             for ($i = max(0, $line - 10); $i < min($line + 10, count($code)); $i++) {
-                $messageBody .= ($i + 1)."\t$code[$i]";
+                $messageBody .= ($i + 1).('	'.$code[$i]);
             }
         }
 
@@ -1795,6 +1772,7 @@ function phpagi_error_handler(int $level, string $message, string $file, int $li
         if ($mailcount < 5) {
             @mail($phpagi_error_handler_email, $subject, $ret);
         }
+
         $mailcount++;
     }
 }

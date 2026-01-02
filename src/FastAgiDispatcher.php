@@ -42,13 +42,13 @@ final readonly class FastAgiDispatcher
 
         $handlerPath = $this->resolveHandlerPath($requested);
         if ($handlerPath === null) {
-            $this->conlog($agi, "Script '{$requested}' is not allowed to execute (outside baseDir).");
+            $this->conlog($agi, sprintf("Script '%s' is not allowed to execute (outside baseDir).", $requested));
 
             return;
         }
 
         if (! is_file($handlerPath)) {
-            $this->conlog($agi, "Handler does not exist: {$handlerPath}");
+            $this->conlog($agi, 'Handler does not exist: '.$handlerPath);
 
             return;
         }
@@ -60,7 +60,7 @@ final readonly class FastAgiDispatcher
         }
 
         if (! is_readable($handlerPath)) {
-            $this->conlog($agi, "Handler is not readable: {$handlerPath}");
+            $this->conlog($agi, 'Handler is not readable: '.$handlerPath);
 
             return;
         }
@@ -111,6 +111,7 @@ final readonly class FastAgiDispatcher
             // Misconfiguration: base dir doesn't exist
             return null;
         }
+
         $baseReal = rtrim($baseReal, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
 
         // Resolve the parent directory realpath; then append the filename
@@ -118,6 +119,7 @@ final readonly class FastAgiDispatcher
         if ($candidateDir === false) {
             return null;
         }
+
         $candidateDir = rtrim($candidateDir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
 
         // Ensure the candidate directory is inside baseReal
@@ -145,7 +147,7 @@ final readonly class FastAgiDispatcher
 
         foreach ($required as $fn) {
             if (! function_exists($fn)) {
-                $this->conlog($agi, "POSIX not available ({$fn}); cannot drop privileges.");
+                $this->conlog($agi, sprintf('POSIX not available (%s); cannot drop privileges.', $fn));
 
                 return false;
             }
@@ -155,7 +157,7 @@ final readonly class FastAgiDispatcher
         $group = @filegroup($filePath);
 
         if (! is_int($owner) || $owner < 0 || ! is_int($group) || $group < 0) {
-            $this->conlog($agi, "Cannot determine owner/group for {$filePath}; cannot drop privileges.");
+            $this->conlog($agi, sprintf('Cannot determine owner/group for %s; cannot drop privileges.', $filePath));
 
             return false;
         }

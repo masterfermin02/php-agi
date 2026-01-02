@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Fperdomo\PhpAgi;
 
+use Fperdomo\PhpAgi\Config\ConfigRepository;
+
 /**
  * Asterisk Manager class
  *
@@ -47,54 +49,29 @@ class AgiAsteriskManager
      */
     private array $event_handlers = [];
 
-    private ?string $_buffer = null;
+    private ?string $buffer = null;
 
     /**
      * Whether we're successfully logged in
      */
-    private bool $_logged_in = false;
-
-    public function setPagi(Agi &$agi): void
-    {
-        $this->pagi = $agi;
-    }
+    private bool $loggedIn = false;
 
     /**
      * Constructor
      *
      * @param  string|null  $config  is the name of the config file to parse or a parent agi from which to read the config
-     * @param  array  $optconfig  is an array of configuration vars and vals, stuffed into $this->config['asmanager']
+     * @param  array  $optConfig  is an array of configuration vars and vals, stuffed into $this->config['asmanager']
      */
-    public function __construct($config = null, array $optconfig = [])
+    public function __construct(?string $config = null, array $optConfig = [])
     {
-        // load config
-        if (! is_null($config) && file_exists($config)) {
-            $this->config = parse_ini_file($config, true);
-        } elseif (file_exists(Constants::DEFAULT_PHPAGI_CONFIG)) {
-            $this->config = parse_ini_file(Constants::DEFAULT_PHPAGI_CONFIG, true);
-        }
+        // load + normalize config (backward-compatible array shape)
+        $configRepository = new ConfigRepository($config);
+        $this->config = $configRepository->buildAsManagerConfig($optConfig);
+    }
 
-        // If optconfig is specified, stuff vals and vars into 'asmanager' config array.
-        foreach ($optconfig as $var => $val) {
-            $this->config['asmanager'][$var] = $val;
-        }
-
-        // add default values to config for uninitialized values
-        if (! isset($this->config['asmanager']['server'])) {
-            $this->config['asmanager']['server'] = 'localhost';
-        }
-        if (! isset($this->config['asmanager']['port'])) {
-            $this->config['asmanager']['port'] = 5038;
-        }
-        if (! isset($this->config['asmanager']['username'])) {
-            $this->config['asmanager']['username'] = 'phpagi';
-        }
-        if (! isset($this->config['asmanager']['secret'])) {
-            $this->config['asmanager']['secret'] = 'phpagi';
-        }
-        if (! isset($this->config['asmanager']['write_log'])) {
-            $this->config['asmanager']['write_log'] = false;
-        }
+    public function setPagi(Agi &$agi): void
+    {
+        $this->pagi = $agi;
     }
 
     /**
@@ -104,24 +81,26 @@ class AgiAsteriskManager
      */
     public function send_request(string $action, array $parameters = []): array
     {
-        $req = "Action: $action\r\n";
+        $req = "Action: {$action}\r\n";
         $actionid = null;
         foreach ($parameters as $var => $val) {
             if (is_array($val)) {
                 foreach ($val as $line) {
-                    $req .= "$var: $line\r\n";
+                    $req .= "{$var}: {$line}\r\n";
                 }
             } else {
-                $req .= "$var: $val\r\n";
+                $req .= "{$var}: {$val}\r\n";
                 if (strtolower((string) $var) === 'actionid') {
                     $actionid = $val;
                 }
             }
         }
+
         if (! $actionid) {
             $actionid = $this->ActionID();
-            $req .= "ActionID: $actionid\r\n";
+            $req .= "ActionID: {$actionid}\r\n";
         }
+
         $req .= "\r\n";
 
         fwrite($this->socket, $req);
@@ -138,17 +117,18 @@ class AgiAsteriskManager
             if ($buf === false) {
                 throw new \Exception('Error reading from AMI socket');
             }
-            $this->_buffer .= $buf;
 
-            $pos = strpos($this->_buffer, "\r\n\r\n");
+            $this->buffer .= $buf;
+
+            $pos = strpos($this->buffer, "\r\n\r\n");
             if ($pos !== false) {
                 // there's a full message in the buffer
                 break;
             }
         } while (! feof($this->socket));
 
-        $msg = substr($this->_buffer, 0, $pos);
-        $this->_buffer = substr($this->_buffer, $pos + 4);
+        $msg = substr($this->buffer, 0, $pos);
+        $this->buffer = substr($this->buffer, $pos + 4);
 
         $msgarr = explode("\r\n", $msg);
 
@@ -177,6 +157,7 @@ class AgiAsteriskManager
                             $data .= "\n".$output[1];
                         }
                     }
+
                     $parameters['data'] = $data;
                 }
             }
@@ -187,6 +168,7 @@ class AgiAsteriskManager
             if (! isset($kv[1])) {
                 $kv[1] = '';
             }
+
             $key = trim($kv[0]);
             $val = trim($kv[1]);
             $parameters[$key] = $val;
@@ -247,6 +229,7 @@ class AgiAsteriskManager
                     $evlist[] = $res;
                 }
             } while (true);
+
             $res['events'] = $evlist;
         }
 
@@ -269,9 +252,11 @@ class AgiAsteriskManager
         if (is_null($server)) {
             $server = $this->config['asmanager']['server'];
         }
+
         if (is_null($username)) {
             $username = $this->config['asmanager']['username'];
         }
+
         if (is_null($secret)) {
             $secret = $this->config['asmanager']['secret'];
         }
@@ -286,11 +271,11 @@ class AgiAsteriskManager
             $this->port = (int) $this->config['asmanager']['port'];
         }
 
-        // connect the socket
-        $errno = $errstr = null;
+        $errno = null;
+        $errstr = null;
         $this->socket = @fsockopen($this->server, $this->port, $errno, $errstr);
         if ($this->socket == false) {
-            $this->log("Unable to connect to manager {$this->server}:{$this->port} ($errno): $errstr");
+            $this->log(sprintf('Unable to connect to manager %s:%d (%d): %s', $this->server, $this->port, $errno, $errstr));
 
             return false;
         }
@@ -307,13 +292,14 @@ class AgiAsteriskManager
         // login
         $res = $this->send_request('login', ['Username' => $username, 'Secret' => $secret]);
         if (($res['Response'] ?? '') != 'Success') {
-            $this->_logged_in = false;
+            $this->loggedIn = false;
             $this->log('Failed to login.');
             $this->disconnect();
 
             return false;
         }
-        $this->_logged_in = true;
+
+        $this->loggedIn = true;
 
         return true;
     }
@@ -325,9 +311,10 @@ class AgiAsteriskManager
      */
     public function disconnect(): void
     {
-        if ($this->_logged_in) {
+        if ($this->loggedIn) {
             $this->logoff();
         }
+
         fclose($this->socket);
     }
 
@@ -418,6 +405,7 @@ class AgiAsteriskManager
         if ($actionid == null) {
             $actionid = $this->ActionID();
         }
+
         $parameters['ActionID'] = $actionid;
         $response = $this->send_request('DBGet', $parameters);
         if (($response['Response'] ?? '') == 'Success') {
@@ -579,9 +567,11 @@ class AgiAsteriskManager
         if ($file) {
             $parameters['File'] = $file;
         }
+
         if ($format) {
             $parameters['Format'] = $format;
         }
+
         if (! is_null($file)) {
             $parameters['Mix'] = ($mix) ? 'true' : 'false';
         }
@@ -617,9 +607,11 @@ class AgiAsteriskManager
         if ($exten) {
             $parameters['Exten'] = $exten;
         }
+
         if ($context) {
             $parameters['Context'] = $context;
         }
+
         if ($priority) {
             $parameters['Priority'] = $priority;
         }
@@ -627,6 +619,7 @@ class AgiAsteriskManager
         if ($application) {
             $parameters['Application'] = $application;
         }
+
         if ($data) {
             $parameters['Data'] = $data;
         }
@@ -634,18 +627,23 @@ class AgiAsteriskManager
         if ($timeout) {
             $parameters['Timeout'] = $timeout;
         }
+
         if ($callerid) {
             $parameters['CallerID'] = $callerid;
         }
+
         if ($variable) {
             $parameters['Variable'] = $variable;
         }
+
         if ($account) {
             $parameters['Account'] = $account;
         }
+
         if (! is_null($async)) {
             $parameters['Async'] = ($async) ? 'true' : 'false';
         }
+
         if ($actionid) {
             $parameters['ActionID'] = $actionid;
         }
@@ -695,6 +693,7 @@ class AgiAsteriskManager
         if ($penalty) {
             $parameters['Penalty'] = $penalty;
         }
+
         if ($memberName) {
             $parameters['MemberName'] = $memberName;
         }
@@ -972,10 +971,11 @@ class AgiAsteriskManager
     {
         $event = strtolower($event);
         if (isset($this->event_handlers[$event])) {
-            $this->log("$event handler is already defined, not over-writing.");
+            $this->log($event.' handler is already defined, not over-writing.');
 
             return false;
         }
+
         $this->event_handlers[$event] = $callback;
 
         return true;
@@ -995,7 +995,8 @@ class AgiAsteriskManager
 
             return true;
         }
-        $this->log("$event handler is not defined.");
+
+        $this->log($event.' handler is not defined.');
 
         return false;
     }
@@ -1009,7 +1010,7 @@ class AgiAsteriskManager
     {
         $ret = false;
         $e = strtolower((string) $parameters['Event']);
-        $this->log("Got event.. $e");
+        $this->log('Got event.. '.$e);
 
         $handler = '';
         if (isset($this->event_handlers[$e])) {
@@ -1019,12 +1020,12 @@ class AgiAsteriskManager
         }
 
         if (function_exists($handler)) {
-            $this->log("Execute handler $handler");
+            $this->log('Execute handler '.$handler);
             $ret = $handler($e, $parameters, $this->server, $this->port);
         } elseif (is_array($handler)) {
             $ret = call_user_func($handler, $e, $parameters, $this->server, $this->port);
         } else {
-            $this->log("No event handler for event '$e'");
+            $this->log(sprintf("No event handler for event '%s'", $e));
         }
 
         return $ret;

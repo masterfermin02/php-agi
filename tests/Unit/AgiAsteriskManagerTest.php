@@ -69,7 +69,7 @@ describe('AgiAsteriskManager', function () {
         $manager = new AgiAsteriskManager($tempConfig);
 
         expect($manager->config['asmanager']['server'])->toBe('testserver')
-            ->and($manager->config['asmanager']['port'])->toBe('1234');
+            ->and($manager->config['asmanager']['port'])->toBe(1234);
 
         unlink($tempConfig);
     });

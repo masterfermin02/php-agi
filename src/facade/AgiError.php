@@ -1,6 +1,6 @@
 <?php
 
-namespace Fperdomo\PhpAgi\facade;
+namespace Fperdomo\PhpAgi\Facade;
 
 class AgiError
 {
@@ -38,8 +38,8 @@ class AgiError
 
             // build message
             $basefile = basename($file);
-            $subject = "$basefile/$line/$levelName: $message";
-            $messageBody = "$levelName: $message in $file on line $line\n\n";
+            $subject = sprintf('%s/%d/%s: %s', $basefile, $line, $levelName, $message);
+            $messageBody = "{$levelName}: {$message} in {$file} on line {$line}\n\n";
 
             // legacy mysql_* functions removed in modern PHP; prefer mysqli if available
             if (strpos(' '.strtolower($messageBody), 'mysql') && function_exists('mysqli_errno')) {
@@ -55,7 +55,7 @@ class AgiError
                 @socket_connect($socket, '64.0.0.0', $port);
                 @socket_getsockname($socket, $addr, $port);
                 @socket_close($socket);
-                $messageBody .= "\n\nIP Address: $addr\n";
+                $messageBody .= "\n\nIP Address: {$addr}\n";
             }
 
             // include variables
@@ -65,10 +65,10 @@ class AgiError
 
             // include code fragment
             if (file_exists($file)) {
-                $messageBody .= "\n\n$file:\n";
+                $messageBody .= "\n\n{$file}:\n";
                 $code = @file($file);
                 for ($i = max(0, $line - 10); $i < min($line + 10, count($code)); $i++) {
-                    $messageBody .= ($i + 1)."\t$code[$i]";
+                    $messageBody .= ($i + 1).('	'.$code[$i]);
                 }
             }
 
@@ -92,6 +92,7 @@ class AgiError
             if ($mailcount < 5) {
                 @mail($phpagi_error_handler_email, $subject, $ret);
             }
+
             $mailcount++;
         }
     }
