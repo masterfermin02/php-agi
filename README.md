@@ -1,6 +1,6 @@
 # PHPAGI
 
-PHPAGI is a PHP library that simplifies building Asterisk AGI (Asterisk Gateway Interface), AMI (Asterisk Manager Interface), and FastAGI applications. This repository is a modernized fork of the original welltime/phpagi project and is updated to be compatible with PHP 8.2+ while maintaining a familiar API for easier migration.
+PHPAGI is a PHP library that simplifies building Asterisk AGI (Asterisk Gateway Interface), AMI (Asterisk Manager Interface), and FastAGI applications. This repository is a modernized fork of the original welltime/phpagi project and is updated to be compatible with PHP 8.3+ while maintaining a familiar API for easier migration.
 
 Table of Contents
 
