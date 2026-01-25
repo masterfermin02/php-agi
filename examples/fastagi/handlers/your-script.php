@@ -5,7 +5,7 @@ declare(strict_types=1);
 // FastAGI handler example.
 // Expects $env (array) and $socket (stream) provided by `fastagi/server.php`.
 // Uses simple helpers to write/read FastAGI commands/responses over the socket.
-if (!isset($socket) || !is_resource($socket)) {
+if (! isset($socket) || ! is_resource($socket)) {
     throw new \RuntimeException('FastAGI handler requires $socket resource provided by server');
 }
 $w = function (string $cmd) use ($socket) {

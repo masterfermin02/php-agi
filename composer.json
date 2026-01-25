@@ -4,7 +4,6 @@
   "keywords": ["phpagi", "asterisk", "agi", "voip", "fastagi", "ami", "ivr", "callcenter", "telephony"],
   "homepage": "https://fperdomo.dev",
   "license": "MIT",
-  "version": "1.0.1",
   "authors": [
     {
       "name": "Fermin Perdomo",

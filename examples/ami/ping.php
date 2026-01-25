@@ -17,7 +17,7 @@ $config = [
 try {
     $manager = new AgiAsteriskManager(null, $config);
 
-    if (!$manager->connect()) {
+    if (! $manager->connect()) {
         fwrite(STDERR, "Failed to connect to AMI\n");
         exit(1);
     }
