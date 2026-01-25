@@ -122,9 +122,8 @@ chown asterisk:asterisk /var/lib/asterisk/agi-bin/hello.php
 - Check Asterisk console: asterisk -rvvvvv
 - Log in script using error_log() (stderr) and/or a file logger.
 
-### “FastAGI as a systemd service”
+### FastAGI as a systemd service
 
-```md
 ## Running FastAGI with systemd (recommended)
 
 Create `/etc/systemd/system/phpagi-fastagi.service`:
