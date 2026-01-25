@@ -3,7 +3,7 @@
   "description": "Modern PHP 8.3+ fork of PHPAGI for building Asterisk AGI, FastAGI, and AMI integrations.",
   "keywords": ["phpagi", "asterisk", "agi", "voip", "fastagi", "ami", "ivr", "callcenter", "telephony"],
   "homepage": "https://fperdomo.dev",
-  "license": "GNU",
+  "license": "MIT",
   "version": "1.0.1",
   "authors": [
     {

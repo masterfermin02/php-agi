@@ -276,7 +276,7 @@ Contributions are welcome. Suggested workflow:
 4. Push to your fork
 5. Open a Pull Request
 
-Testing & CI: Ensure compatibility with PHP 8.2+; GitHub Actions or similar CI is recommended.
+Testing & CI: Ensure compatibility with PHP 8.3+; GitHub Actions or similar CI is recommended.
 
 ## License
 
