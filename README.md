@@ -20,14 +20,21 @@ Table of Contents
 - AGI class for interactive call control
 - FastAGI server support
 - Asterisk Manager Interface (AMI) integration
-- Updated for PHP 8.2+ compatibility
+- Updated for PHP 8.3+ compatibility
 - Maintains the original API design to simplify migration
+- Extensions: ext-sockets
 
 ## Requirements
 
-- PHP 8.2 or higher
+- PHP 8.3 or higher
 - Asterisk PBX (with AGI / FastAGI support)
 - Composer for dependency management
+
+## Why this fork?
+
+The original `welltime/phpagi` project is now archived, and many deployments still rely on the classic API.
+This package modernizes PHPAGI for PHP 8.3+ while keeping a familiar developer experience to simplify migration.
+
 
 ## Installation
 
@@ -90,6 +97,78 @@ In `extensions.conf`:
 exten => 123,1,AGI(your-script.php)
 exten => 123,n,Hangup()
 ```
+
+## Production quickstart (AGI)
+
+1) Install:
+```bash
+composer require fperdomo/php-agi
+```
+2) Put scripts in Asterisk AGI directory (commonly /var/lib/asterisk/agi-bin/).
+3) Make executable and ensure correct owner:
+
+```bash
+chmod +x /var/lib/asterisk/agi-bin/hello.php
+chown asterisk:asterisk /var/lib/asterisk/agi-bin/hello.php
+```
+4) In your dialplan:
+```bash
+ exten => 123,1,NoOp(Hello AGI)
+ same => n,AGI(hello.php)
+ same => n,Hangup()
+```
+5) Debug:
+
+- Check Asterisk console: asterisk -rvvvvv
+- Log in script using error_log() (stderr) and/or a file logger.
+
+### “FastAGI as a systemd service”
+
+```md
+## Running FastAGI with systemd (recommended)
+
+Create `/etc/systemd/system/phpagi-fastagi.service`:
+
+```ini
+[Unit]
+Description=PHPAGI FastAGI Dispatcher
+After=network.target
+
+[Service]
+Type=simple
+User=asterisk
+Group=asterisk
+WorkingDirectory=/opt/phpagi
+ExecStart=/usr/bin/php /opt/phpagi/fastagi-server.php
+Restart=always
+RestartSec=2
+Environment=APP_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable & start:
+```bash
+systemctl daemon-reload
+systemctl enable phpagi-fastagi
+systemctl start phpagi-fastagi
+journalctl -u phpagi-fastagi -f
+```
+
+Dialplan:
+
+```ini
+exten => 123,1,FastAGI(agi://127.0.0.1:4573/your-script)
+
+```
+
+## AMI security notes
+
+- Never expose AMI (5038) publicly.
+- Use a dedicated AMI user with minimum permissions.
+- Prefer binding to localhost or a private network interface.
+- Store credentials in environment variables (or secrets manager).
 
 ### FastAGI
 

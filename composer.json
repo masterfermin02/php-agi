@@ -1,10 +1,10 @@
 {
   "name": "fperdomo/php-agi",
-  "description": "PHPAGI is lib for the Asterisk Gateway Interface.",
-  "keywords": ["phpagi", "asterisk", "agi", "voip"],
+  "description": "Modern PHP 8.3+ fork of PHPAGI for building Asterisk AGI, FastAGI, and AMI integrations.",
+  "keywords": ["phpagi", "asterisk", "agi", "voip", "fastagi", "ami", "ivr", "callcenter", "telephony"],
   "homepage": "https://fperdomo.dev",
-  "license": "MIT",
-  "version": "1.0.0",
+  "license": "GNU",
+  "version": "1.0.1",
   "authors": [
     {
       "name": "Fermin Perdomo",

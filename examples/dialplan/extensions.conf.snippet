@@ -1,0 +1,73 @@
+; Example dialplan snippet to invoke the classic AGI, FastAGI and run the AMI check from the system.
+
+[examples]
+exten => 100,1,Answer()
+ same => n,AGI(agi/hello.php)               ; classic AGI using a script placed in /var/lib/asterisk/agi-bin/ or full path
+ same => n,Hangup()
+
+exten => 101,1,Answer()
+ same => n,AGI(agi://127.0.0.1:4573/your-script.php)  ; FastAGI pointing to the server started by fastagi/server.php
+ same => n,Hangup()
+
+exten => 600,1,NoOp(Run AMI ping script from shell)
+ same => n,System(/usr/bin/php /path/to/examples/ami/ping.php) ; run the ami/ping.php example from the dialplan (requires proper file path)
+ same => n,Hangup()
+<?php
+
+declare(strict_types=1);
+
+// Minimal FastAGI TCP server. Listens on FASTAGI_HOST:FASTAGI_PORT (defaults 0.0.0.0:4573).
+// For each connection it parses AGI env lines and then includes a handler script from fastagi/handlers/.
+$address = getenv('FASTAGI_HOST') ?: '0.0.0.0';
+$port = (int) (getenv('FASTAGI_PORT') ?: 4573);
+
+$server = @stream_socket_server("tcp://{$address}:{$port}", $errno, $errstr);
+if (!$server) {
+    fwrite(STDERR, "Failed to start FastAGI server: $errstr ($errno)\n");
+    exit(1);
+}
+echo "FastAGI server listening on {$address}:{$port}\n";
+
+while ($conn = @stream_socket_accept($server, -1)) {
+    // Read FastAGI request headers (key: value lines terminated by blank line)
+    $env = [];
+    while (($line = trim(fgets($conn))) !== '') {
+        if ($line === '') {
+            break;
+        }
+        if (strpos($line, ':') === false) {
+            continue;
+        }
+        [$k, $v] = explode(':', $line, 2);
+        $env[trim($k)] = trim($v);
+    }
+
+    // Decide the handler script:
+    // Asterisk usually sends the requested script in agi_network_script.
+    $script = $env['agi_network_script'] ?? null;
+    // Default to our example handler if nothing specified
+    if ($script === null) {
+        $script = 'your-script.php';
+    } else {
+        // Normalize possible leading slashes
+        $script = ltrim($script, '/');
+        $script = basename($script);
+    }
+
+    // Map to handlers directory inside examples/fastagi/handlers/
+    $scriptPath = __DIR__.'/handlers/'.$script;
+
+    try {
+        if (file_exists($scriptPath)) {
+            // Provide $env and $socket to the handler
+            $socket = $conn;
+            include $scriptPath;
+        } else {
+            fwrite($conn, "VERBOSE \"FastAGI handler not found: {$scriptPath}\"\r\n");
+        }
+    } catch (\Throwable $e) {
+        fwrite($conn, "VERBOSE \"FastAGI handler error: {$e->getMessage()}\"\r\n");
+    }
+
+    fclose($conn);
+}
